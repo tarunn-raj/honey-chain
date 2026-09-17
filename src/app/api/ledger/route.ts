@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { verifyChain } from "@/lib/ledger";
+import { isPolygonAnchoringAvailable } from "@/lib/chain";
 
 export async function GET() {
   const batches = await db.harvestBatch.findMany({
@@ -19,8 +20,9 @@ export async function GET() {
       actor: block.actor.name,
       hash: block.hash,
       prevHash: block.prevHash,
+      anchorTxHash: block.anchorTxHash,
     })),
   })));
 
-  return Response.json({ batches: chains });
+  return Response.json({ batches: chains, anchoringAvailable: isPolygonAnchoringAvailable() });
 }

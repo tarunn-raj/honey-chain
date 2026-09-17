@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, RotateCcw, ShieldAlert, Zap } from "lucide
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-type ChainBlock = { id: string; index: number; eventType: string; actor: string; hash: string; prevHash: string | null };
+type ChainBlock = { id: string; index: number; eventType: string; actor: string; hash: string; prevHash: string | null; anchorTxHash: string | null };
 type Chain = {
   id: string;
   batchCode: string;
@@ -21,11 +21,15 @@ export default function LedgerPage() {
   const [chains, setChains] = useState<Chain[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [anchoringAvailable, setAnchoringAvailable] = useState(false);
+  const [anchorTxHashes, setAnchorTxHashes] = useState<Record<string, string>>({});
 
   async function loadChains() {
     const response = await fetch("/api/ledger", { cache: "no-store" });
-    const data = await response.json() as { batches: Chain[] };
+    const data = await response.json() as { batches: Chain[]; anchoringAvailable?: boolean };
     setChains(data.batches);
+    setAnchoringAvailable(Boolean(data.anchoringAvailable));
+    setAnchorTxHashes(Object.fromEntries(data.batches.flatMap((chain) => chain.blocks.filter((block) => block.anchorTxHash).map((block) => [chain.id, block.anchorTxHash!]))));
     setLoading(false);
   }
 
@@ -46,6 +50,15 @@ export default function LedgerPage() {
     setBusy(chain.id);
     await fetch("/api/demo/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ batchId: chain.id }) });
     await loadChains();
+    setBusy(null);
+  }
+
+  async function anchor(chain: Chain) {
+    setBusy(chain.id);
+    const response = await fetch(`/api/ledger/${chain.id}/anchor`, { method: "POST" });
+    const data = await response.json() as { anchorTxHash?: string; error?: string };
+    if (response.ok && data.anchorTxHash) setAnchorTxHashes((current) => ({ ...current, [chain.id]: data.anchorTxHash! }));
+    else window.alert(data.error ?? "Unable to anchor this batch.");
     setBusy(null);
   }
 
@@ -73,8 +86,10 @@ export default function LedgerPage() {
                 <div className="flex gap-2">
                   <Button variant="destructive" onClick={() => void tamper(chain)} disabled={busy === chain.id}><Zap /> Simulate Tampering</Button>
                   <Button variant="outline" onClick={() => void restore(chain)} disabled={busy === chain.id || brokenIndex === null}><RotateCcw /> Restore</Button>
+                  {anchoringAvailable && <Button variant="outline" onClick={() => void anchor(chain)} disabled={busy === chain.id || brokenIndex !== null || Boolean(anchorTxHashes[chain.id])}>Anchor to blockchain</Button>}
                 </div>
               </div>
+              {anchorTxHashes[chain.id] && <p className="text-xs text-emerald-700">Anchored: <a className="underline" href={`https://amoy.polygonscan.com/tx/${anchorTxHashes[chain.id]}`} target="_blank" rel="noreferrer">{shorten(anchorTxHashes[chain.id])}</a></p>}
 
               <div className={`overflow-hidden rounded-2xl border p-4 transition-all duration-700 ${brokenIndex === null ? "border-emerald-200 bg-emerald-50/70" : "border-red-300 bg-red-50 shadow-[0_0_45px_rgba(239,68,68,0.16)]"}`}>
                 <div className="flex items-center gap-3">
