@@ -1,0 +1,3 @@
+export default function AppLoading() {
+  return <main className="min-h-screen animate-pulse bg-[#f7faf8] p-6 sm:p-10"><div className="mx-auto max-w-7xl space-y-6"><div className="h-8 w-56 rounded-lg bg-emerald-100" /><div className="h-4 w-80 rounded bg-emerald-50" /><div className="grid gap-4 md:grid-cols-3"><div className="h-32 rounded-xl bg-white ring-1 ring-emerald-100" /><div className="h-32 rounded-xl bg-white ring-1 ring-emerald-100" /><div className="h-32 rounded-xl bg-white ring-1 ring-emerald-100" /></div><div className="h-72 rounded-xl bg-white ring-1 ring-emerald-100" /></div></main>;
+}

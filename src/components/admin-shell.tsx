@@ -1,16 +1,54 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CloudOff, LayoutDashboard, Map, Network, Settings2, Users } from "lucide-react";
+import { CloudOff, LayoutDashboard, Map, Menu, Network, PanelLeftClose, Settings2, Users, X } from "lucide-react";
 import { pendingMutationCount, replayOutbox } from "@/lib/outbox";
 
 export function AdminShell() {
+  const pathname = usePathname();
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
-  async function refresh() { setOnline(navigator.onLine); setPending(await pendingMutationCount()); }
-  // The shell synchronizes browser connectivity and IndexedDB state.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void refresh(); const update = async () => { await replayOutbox(); await refresh(); }; window.addEventListener("online", update); window.addEventListener("offline", refresh); const timer = setInterval(refresh, 3000); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", refresh); clearInterval(timer); }; }, []);
-  return <header className="sticky top-0 z-40 border-b bg-white/95 px-4 py-3 backdrop-blur sm:px-8"><div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4"><Link href="/dashboard" className="mr-auto text-sm font-black tracking-[0.18em] text-amber-700">HONEY CHAIN</Link><nav className="flex flex-wrap items-center gap-1 text-xs font-semibold text-muted-foreground"><Link className="rounded px-2 py-1 hover:bg-amber-50" href="/dashboard"><LayoutDashboard className="mr-1 inline size-3" />Overview</Link><Link className="rounded px-2 py-1 hover:bg-amber-50" href="/admin/clusters"><Users className="mr-1 inline size-3" />Clusters</Link><Link className="rounded px-2 py-1 hover:bg-amber-50" href="/admin/map"><Map className="mr-1 inline size-3" />Map</Link><Link className="rounded px-2 py-1 hover:bg-amber-50" href="/admin/integrations"><Network className="mr-1 inline size-3" />Integrations</Link><Link className="rounded px-2 py-1 hover:bg-amber-50" href="/hives"><Settings2 className="mr-1 inline size-3" />Hives</Link></nav>{(!online || pending > 0) && <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${online ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-800"}`}><CloudOff className="size-3.5" />{online ? `Syncing — ${pending} pending` : `Offline — ${pending} pending`}</div>}</div></header>;
+  const [role, setRole] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const publicRoute = pathname === "/" || pathname.startsWith("/verify/");
+
+  async function refresh() {
+    setOnline(navigator.onLine);
+    setPending(await pendingMutationCount());
+  }
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setRole(document.cookie.match(/(?:^|;\s*)role=([^;]+)/)?.[1] ?? null);
+    });
+    queueMicrotask(() => void refresh());
+    const update = async () => { await replayOutbox(); await refresh(); };
+    window.addEventListener("online", update);
+    window.addEventListener("offline", refresh);
+    const timer = setInterval(refresh, 3000);
+    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", refresh); clearInterval(timer); };
+  }, []);
+
+  if (publicRoute) return null;
+  const isAdmin = role === "ADMIN" || role === "KVIC_OFFICER";
+  const links = [
+    { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+    { href: "/hives", label: "Hive network", icon: Settings2 },
+    { href: "/batches", label: "Supply chain", icon: Network },
+    { href: "/ledger", label: "Ledger", icon: PanelLeftClose },
+    ...(isAdmin ? [{ href: "/admin/clusters", label: "Clusters", icon: Users }, { href: "/admin/map", label: "India map", icon: Map }, { href: "/admin/integrations", label: "Integrations", icon: Network }] : []),
+  ];
+
+  return <>
+    <div className="mobile-topbar md:hidden"><button aria-label="Open navigation" onClick={() => setOpen(true)}><Menu /></button><Link href="/dashboard" className="shell-brand">HONEY <span>CHAIN</span></Link>{(!online || pending > 0) && <span className="shell-status-dot" />}</div>
+    {open && <button aria-label="Close navigation" className="sidebar-scrim md:hidden" onClick={() => setOpen(false)} />}
+    <aside className={`app-sidebar ${open ? "sidebar-open" : ""}`}>
+      <div className="sidebar-inner"><div className="sidebar-brand-row"><Link href="/dashboard" className="shell-brand">HONEY <span>CHAIN</span></Link><button aria-label="Close navigation" className="md:hidden" onClick={() => setOpen(false)}><X className="size-4" /></button></div>
+        <p className="sidebar-kicker">Operations console</p><nav className="sidebar-nav">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setOpen(false)} className={pathname === href || pathname.startsWith(`${href}/`) ? "active" : ""}><Icon />{label}</Link>)}</nav>
+        <div className="sidebar-bottom">{(!online || pending > 0) && <div className={`shell-offline ${online ? "syncing" : ""}`}><CloudOff className="size-4" /><span>{online ? `Syncing — ${pending} pending` : `Offline — ${pending} pending`}</span></div>}<p>Honey Chain · 2026</p></div>
+      </div>
+    </aside>
+  </>;
 }
