@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "iot:simulate": "tsx scripts/iot-simulator.ts",
+    "seed:demo": "prisma db seed",
     "deploy:anchor:amoy": "hardhat run scripts/deploy-anchor.ts --network amoy"
   },
   "dependencies": {
