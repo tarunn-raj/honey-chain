@@ -1,6 +1,7 @@
 import { sha256 } from "@/lib/ledger-hash";
 
-export function buildMerkleRoot(hashes: string[]): string {
+/** Builds a deterministic SHA-256 Merkle root, duplicating odd leaves. */
+export const buildMerkleRoot = (hashes: string[]): string => {
   if (hashes.length === 0) return sha256("");
 
   let level = [...hashes];
@@ -14,4 +15,4 @@ export function buildMerkleRoot(hashes: string[]): string {
     level = nextLevel;
   }
   return level[0];
-}
+};

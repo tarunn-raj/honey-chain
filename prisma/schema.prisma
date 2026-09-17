@@ -29,6 +29,8 @@ enum AlertType {
   SWARM_RISK
   THERMAL_STRESS
   THEFT
+  MOISTURE_RISK
+  VENTILATION_FAILURE
 }
 
 enum AlertSeverity {
