@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String
+  createdAt DateTime @default(now())
+}
+
+model Hive {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model HoneyBatch {
+  id        String   @id @default(cuid())
+  batchCode String   @unique
+  createdAt DateTime @default(now())
+}
+
+model LedgerBlock {
+  id           String   @id @default(cuid())
+  hash         String   @unique
+  previousHash String?
+  payload      Json
+  createdAt    DateTime @default(now())
+}
