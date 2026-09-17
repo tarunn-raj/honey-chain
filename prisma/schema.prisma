@@ -6,30 +6,260 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserRole {
+  BEEKEEPER
+  COLLECTION_CENTER
+  LAB
+  PROCESSOR
+  KVIC_OFFICER
+  ADMIN
+}
+
+enum HiveStatus {
+  HEALTHY
+  AT_RISK
+  DISEASED
+  ABSCONDED
+}
+
+enum AlertType {
+  VARROA
+  FOULBROOD
+  QUEENLESS
+  SWARM_RISK
+  THERMAL_STRESS
+  THEFT
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum BatchStatus {
+  HARVESTED
+  COLLECTION
+  LAB_TESTING
+  PROCESSING
+  BOTTLED
+}
+
+enum ProcessingType {
+  FILTERED
+  PASTEURIZED
+  BOTTLED
+  PACKAGED
+}
+
+enum FloralSource {
+  MUSTARD
+  LITCHI
+  EUCALYPTUS
+  JAMUN
+  MULTIFLORA
+}
+
 model User {
-  id        String   @id @default(cuid())
+  id               String            @id @default(cuid())
+  name             String
+  phone            String            @unique
+  role             UserRole
+  clusterId        String?
+  passwordHash     String
+  cluster          Cluster?          @relation(fields: [clusterId], references: [id])
+  apiaries         Apiary[]
+  labTests         LabTest[]         @relation("LabTestsByUser")
+  processingEvents ProcessingEvent[] @relation("ProcessingEventsByUser")
+  blocks           Block[]           @relation("BlocksByActor")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([clusterId])
+  @@index([role])
+}
+
+model Cluster {
+  id        String    @id @default(cuid())
   name      String
-  email     String   @unique
-  role      String
-  createdAt DateTime @default(now())
+  district  String
+  state     String
+  lat       Float
+  lng       Float
+  users     User[]
+  apiaries  Apiary[]
+  createdAt DateTime  @default(now())
+
+  @@index([state, district])
+}
+
+model Apiary {
+  id             String         @id @default(cuid())
+  name           String
+  beekeeperId    String
+  clusterId      String
+  lat            Float
+  lng            Float
+  hiveCount      Int
+  beekeeper      User           @relation(fields: [beekeeperId], references: [id])
+  cluster        Cluster        @relation(fields: [clusterId], references: [id])
+  hives          Hive[]
+  harvestBatches HarvestBatch[]
+  createdAt      DateTime       @default(now())
+
+  @@index([beekeeperId])
+  @@index([clusterId])
 }
 
 model Hive {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  createdAt DateTime @default(now())
+  id                String             @id @default(cuid())
+  code              String             @unique
+  apiaryId          String
+  installedAt       DateTime
+  status            HiveStatus
+  apiary            Apiary             @relation(fields: [apiaryId], references: [id])
+  telemetryReadings TelemetryReading[]
+  healthAlerts      HealthAlert[]
+  createdAt         DateTime           @default(now())
+
+  @@index([apiaryId])
+  @@index([status])
 }
 
-model HoneyBatch {
-  id        String   @id @default(cuid())
-  batchCode String   @unique
-  createdAt DateTime @default(now())
+model TelemetryReading {
+  id         String   @id @default(cuid())
+  hiveId     String
+  recordedAt DateTime
+  tempC      Float
+  humidity   Float
+  weightKg   Float
+  soundHz    Float
+  soundDb    Float
+  co2Ppm     Float
+  batteryPct Float
+  hive       Hive     @relation(fields: [hiveId], references: [id], onDelete: Cascade)
+
+  @@unique([hiveId, recordedAt])
+  @@index([hiveId, recordedAt])
 }
 
-model LedgerBlock {
-  id           String   @id @default(cuid())
-  hash         String   @unique
-  previousHash String?
-  payload      Json
-  createdAt    DateTime @default(now())
+model HealthAlert {
+  id         String        @id @default(cuid())
+  hiveId     String
+  type       AlertType
+  severity   AlertSeverity
+  confidence Float
+  detectedAt DateTime
+  resolvedAt DateTime?
+  notes      String?
+  hive       Hive          @relation(fields: [hiveId], references: [id], onDelete: Cascade)
+
+  @@index([hiveId, detectedAt])
+  @@index([type, severity])
+}
+
+model HarvestBatch {
+  id               String            @id @default(cuid())
+  batchCode        String            @unique
+  apiaryId         String
+  hiveIds          String[]
+  harvestedAt      DateTime
+  quantityKg       Float
+  floralSource     FloralSource
+  moisturePct      Float
+  status           BatchStatus
+  apiary           Apiary            @relation(fields: [apiaryId], references: [id])
+  labTests         LabTest[]
+  processingEvents ProcessingEvent[]
+  blocks           Block[]
+  qrUnits          QRUnit[]
+  createdAt        DateTime          @default(now())
+
+  @@index([apiaryId])
+  @@index([status])
+  @@index([floralSource])
+}
+
+model LabTest {
+  id                 String       @id @default(cuid())
+  batchId            String
+  labId              String
+  testedAt           DateTime
+  moisturePct        Float
+  hmfMgKg            Float
+  sucrosePct         Float
+  c4SugarPct         Float
+  antibioticResidue Boolean
+  pollenProfile      String
+  passed             Boolean
+  certificateUrl     String?
+  batch              HarvestBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  lab                User         @relation("LabTestsByUser", fields: [labId], references: [id])
+
+  @@index([batchId])
+  @@index([labId])
+}
+
+model ProcessingEvent {
+  id          String         @id @default(cuid())
+  batchId     String
+  processorId String
+  type        ProcessingType
+  at          DateTime
+  outputUnits Int
+  notes       String?
+  batch       HarvestBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  processor   User           @relation("ProcessingEventsByUser", fields: [processorId], references: [id])
+
+  @@index([batchId, at])
+  @@index([processorId])
+}
+
+model Block {
+  id           String       @id @default(cuid())
+  index        Int
+  batchId      String
+  eventType    String
+  actorId      String
+  payloadJson  Json
+  prevHash     String?
+  hash         String       @unique
+  merkleRoot   String?
+  anchorTxHash String?
+  createdAt    DateTime     @default(now())
+  batch        HarvestBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  actor        User         @relation("BlocksByActor", fields: [actorId], references: [id])
+
+  @@unique([batchId, index])
+  @@index([batchId, createdAt])
+}
+
+model QRUnit {
+  id             String       @id @default(cuid())
+  code           String       @unique
+  batchId        String
+  bottleNo       Int
+  hmac           String
+  firstScannedAt DateTime?
+  scanCount      Int          @default(0)
+  batch          HarvestBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  scanLogs       ScanLog[]
+
+  @@unique([batchId, bottleNo])
+  @@index([batchId])
+}
+
+model ScanLog {
+  id               String   @id @default(cuid())
+  qrCode           String
+  at               DateTime @default(now())
+  ip               String?
+  city             String?
+  lat              Float?
+  lng              Float?
+  flaggedDuplicate Boolean  @default(false)
+  qrUnit           QRUnit  @relation(fields: [qrCode], references: [code], onDelete: Cascade)
+
+  @@index([qrCode, at])
 }
