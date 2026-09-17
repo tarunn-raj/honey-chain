@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { buildMerkleRoot } from "@/lib/ledger-merkle";
+import { computeBlockHash, sha256 } from "@/lib/ledger-hash";
 
 export const EVENT_TYPES = [
   "GENESIS",
@@ -62,54 +63,7 @@ type BlockBackup = {
 
 const demoBackups = new Map<string, BlockBackup[]>();
 
-function canonicalize(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([key]) => key !== "hash")
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, canonicalize(entry)]),
-    );
-  }
-  return value;
-}
-
-function blockHashInput(block: HashableBlock) {
-  return {
-    actorId: block.actorId,
-    batchId: block.batchId,
-    eventType: block.eventType,
-    index: block.index,
-    payload: block.payloadJson ?? block.payload,
-    prevHash: block.prevHash,
-  };
-}
-
-export function sha256(input: string): string {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-export function computeBlockHash(block: HashableBlock): string {
-  return sha256(JSON.stringify(canonicalize(blockHashInput(block))));
-}
-
-export function buildMerkleRoot(hashes: string[]): string {
-  if (hashes.length === 0) return sha256("");
-
-  let level = [...hashes];
-  while (level.length > 1) {
-    const nextLevel: string[] = [];
-    for (let index = 0; index < level.length; index += 2) {
-      const left = level[index];
-      const right = level[index + 1] ?? left;
-      nextLevel.push(sha256(left + right));
-    }
-    level = nextLevel;
-  }
-  return level[0];
-}
+export { buildMerkleRoot, computeBlockHash, sha256 };
 
 export function getMerkleProof(hashes: string[], targetIndex: number): MerkleProofStep[] {
   if (targetIndex < 0 || targetIndex >= hashes.length) {

@@ -2,6 +2,8 @@ import "dotenv/config";
 import { createHash } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { buildMerkleRoot } from "../src/lib/ledger-merkle";
+import { computeBlockHash } from "../src/lib/ledger-hash";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -35,12 +37,6 @@ function fixedDate(daysAgo: number, hour = 9) {
 function round(value: number, decimals = 2) {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
-}
-
-function hashBlock(payload: unknown, previousHash: string | null) {
-  return createHash("sha256")
-    .update(JSON.stringify({ payload, previousHash }))
-    .digest("hex");
 }
 
 async function main() {
@@ -200,14 +196,15 @@ async function main() {
     }
   }
 
-  let previousHash: string | null = null;
   for (const [batchIndex, batch] of batches.entries()) {
     const actorId = batchIndex % 2 === 0 ? kvicUser.id : users[batchIndex].id;
-    const events = ["HARVEST", "COLLECTION", ...(batchIndex < 2 ? ["LAB_TEST"] : []), ...(batchIndex === 0 || batchIndex === 1 || batchIndex === 5 ? ["PROCESSING", "BOTTLING"] : [])];
+    const events = ["HARVEST_RECORDED", "COLLECTED_AT_CENTER", ...(batchIndex < 2 ? ["LAB_RESULT_PUBLISHED"] : []), ...(batchIndex === 0 || batchIndex === 1 || batchIndex === 5 ? ["PROCESSED", "BOTTLED"] : [])];
+    let previousHash: string | null = null;
+    const createdBlocks = [];
     for (const [eventIndex, eventType] of events.entries()) {
       const payloadJson = { batchCode: batch.batchCode, eventType, source: "Honey Chain demo seed", sequence: eventIndex };
-      const hash = hashBlock(payloadJson, previousHash);
-      await prisma.block.create({
+      const hash = computeBlockHash({ index: eventIndex, batchId: batch.id, eventType, actorId, payloadJson, prevHash: previousHash });
+      const createdBlock = await prisma.block.create({
         data: {
           index: eventIndex,
           batchId: batch.id,
@@ -216,12 +213,15 @@ async function main() {
           payloadJson,
           prevHash: previousHash,
           hash,
-          merkleRoot: eventIndex === events.length - 1 ? hashBlock(batch.hiveIds, null) : null,
+          merkleRoot: null,
           anchorTxHash: eventIndex === events.length - 1 && batchIndex === 0 ? "0xDEMO_POLYGON_AMOY_ANCHOR" : null,
         },
       });
+      createdBlocks.push(createdBlock);
       previousHash = hash;
     }
+    const merkleRoot = buildMerkleRoot(createdBlocks.map((block) => block.hash));
+    await prisma.block.updateMany({ where: { batchId: batch.id }, data: { merkleRoot } });
   }
 
   const qrUnits = [];
