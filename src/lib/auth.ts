@@ -13,3 +13,7 @@ export function getRoleFromCookie(cookieHeader: string | null): Role | null {
   const value = cookieHeader?.match(/(?:^|;\s*)role=([^;]+)/)?.[1];
   return roles.includes(value as Role) ? (value as Role) : null;
 }
+
+export function roleForRequest(cookieHeader: string | null, fallback: Role): Role {
+  return getRoleFromCookie(cookieHeader) ?? fallback;
+}
