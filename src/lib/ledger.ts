@@ -55,6 +55,13 @@ export type VerifyChainResult = {
   merkleRoot: string;
 };
 
+type BlockBackup = {
+  id: string;
+  payloadJson: Prisma.JsonValue;
+};
+
+const demoBackups = new Map<string, BlockBackup[]>();
+
 function canonicalize(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -236,4 +243,38 @@ export async function verifyChain(batchId: string): Promise<VerifyChainResult> {
     brokenAtIndex,
     merkleRoot,
   };
+}
+
+export async function tamperBlock(batchId: string, blockIndex: number, newQuantityKg: number) {
+  const blocks = await db.block.findMany({ where: { batchId }, orderBy: { index: "asc" } });
+  const block = blocks.find((candidate) => candidate.index === blockIndex);
+  if (!block) throw new Error("Block not found");
+
+  if (!demoBackups.has(batchId)) {
+    demoBackups.set(batchId, blocks.map(({ id, payloadJson }) => ({ id, payloadJson })));
+  }
+
+  const originalPayload = block.payloadJson;
+  const nextPayload = originalPayload !== null && typeof originalPayload === "object" && !Array.isArray(originalPayload)
+    ? { ...originalPayload, quantityKg: newQuantityKg }
+    : { originalPayload, quantityKg: newQuantityKg };
+
+  return db.block.update({
+    where: { id: block.id },
+    data: { payloadJson: nextPayload as Prisma.InputJsonValue },
+  });
+}
+
+export async function restoreDemoChain(batchId: string) {
+  const backup = demoBackups.get(batchId);
+  if (!backup) throw new Error("No demo backup exists for this batch");
+
+  await db.$transaction(
+    backup.map(({ id, payloadJson }) => db.block.update({
+      where: { id },
+      data: { payloadJson: payloadJson as Prisma.InputJsonValue },
+    })),
+  );
+  demoBackups.delete(batchId);
+  return verifyChain(batchId);
 }

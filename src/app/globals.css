@@ -128,3 +128,12 @@
     @apply font-sans;
   }
 }
+
+@keyframes ledger-broken-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(239 68 68 / 0.16); }
+  50% { box-shadow: 0 0 0 8px rgb(239 68 68 / 0.08); }
+}
+
+.ledger-block-broken {
+  animation: ledger-broken-pulse 1.1s ease-in-out 3;
+}
